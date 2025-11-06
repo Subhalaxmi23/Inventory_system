@@ -1,148 +1,832 @@
-## IMS Backend API Documentation and Flow
+# IMS Backend API Documentation
 
-### Overview
-This document describes the public API endpoints and the backend request flow for the IMS backend located in `src/`. Base URL prefix for all endpoints is `/api`.
-
-### Authentication
-- Auth uses JWT in the `Authorization` header with the Bearer scheme.
-- Obtain token via `POST /api/auth/login`.
-- Include header for protected routes: `Authorization: Bearer <token>`.
-- Roles: currently `admin` and regular user. Role checks are enforced via middleware.
-
-### Environment
-- `JWT_SECRET`: secret used to sign JWTs
-- `MONGO_URI`: MongoDB connection string
-- `PORT`: server port (defaults in `src/server.js` if set)
-
-### Common Response Structure
-- Success: status 2xx with resource JSON
-- Auth errors: 401/403 with `{ message: string }`
-- Validation/not found: 400/404 with `{ message: string }`
+## 📋 Table of Contents
+1. [Overview](#overview)
+2. [Authentication](#authentication)
+3. [Environment Setup](#environment-setup)
+4. [API Endpoints](#api-endpoints)
+5. [Request/Response Examples](#requestresponse-examples)
+6. [Backend Flow](#backend-flow)
+7. [Error Handling](#error-handling)
+8. [Data Models](#data-models)
 
 ---
 
-## Endpoints
+## Overview
 
-### Auth
-- POST `/api/auth/register`
-  - Body: `{ name, email, password, role? }`
-  - Returns: created user (sans password) and/or token depending on controller implementation
+This document describes the complete API endpoints and request flow for the Inventory Management System (IMS) backend. All endpoints are prefixed with `/api`.
 
-- POST `/api/auth/login`
-  - Body: `{ email, password }`
-  - Returns: `{ token, user }`
+**Base URL**: `https://inventory-system-apipoint.onrender.com` (Production)  
+**Local URL**: `http://localhost:4001` (Development)
 
-### Products
-- POST `/api/products` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Body: product fields (e.g., name, price, etc.)
-  - Creates a product
+---
 
-- GET `/api/products` (authenticated)
-  - Headers: `Authorization: Bearer <token>`
-  - Lists products
+## Authentication
 
-- PUT `/api/products/:id` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Body: updated fields
-  - Updates a product
+### JWT Token-Based Authentication
 
-- DELETE `/api/products/:id` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Deletes a product
+All protected endpoints require a JWT token in the `Authorization` header:
 
-### Suppliers (admin only unless specified)
-- POST `/api/suppliers`
-  - Headers: `Authorization: Bearer <token>`
-  - Body: supplier fields
+```
+Authorization: Bearer <your-jwt-token>
+```
 
-- GET `/api/suppliers`
-  - Headers: `Authorization: Bearer <token>`
-  - Lists suppliers
+### User Roles
+- **admin**: Full access to all endpoints
+- **customer**: Limited access (can place orders, view own orders)
 
-- PUT `/api/suppliers/:id`
-  - Headers: `Authorization: Bearer <token>`
-  - Body: updated fields
+### Getting a Token
 
-- DELETE `/api/suppliers/:id`
-  - Headers: `Authorization: Bearer <token>`
+1. Register a new user: `POST /api/auth/register`
+2. Login: `POST /api/auth/login`
+3. Use the returned token in subsequent requests
 
-### Stock
-- POST `/api/stocks` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Body: stock fields (e.g., productId, quantity, etc.)
+---
 
-- GET `/api/stocks` (authenticated)
-  - Headers: `Authorization: Bearer <token>`
-  - Lists stock entries
+## Environment Setup
 
-- PUT `/api/stocks/:id` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Body: updated fields
+### Required Environment Variables
 
-- DELETE `/api/stocks/:id` (admin only)
-  - Headers: `Authorization: Bearer <token>`
+Create a `.env` file in the root directory:
 
-### Orders
-- POST `/api/orders` (authenticated)
-  - Headers: `Authorization: Bearer <token>`
-  - Body: order fields (e.g., items, totals, etc.)
-  - Places an order (customer)
+```env
+MONGO_URI=mongodb://localhost:27017/ims
+# OR for MongoDB Atlas:
+# MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/ims
 
-- GET `/api/orders` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Lists all orders (admin)
+JWT_SECRET=your-super-secret-jwt-key-here
+PORT=4001
+```
 
-- GET `/api/orders/my-orders` (authenticated)
-  - Headers: `Authorization: Bearer <token>`
-  - Lists orders for the current user
+### Installation & Running
 
-- PUT `/api/orders/:id/status` (admin only)
-  - Headers: `Authorization: Bearer <token>`
-  - Body: `{ status }`
-  - Updates order status
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode (with auto-reload)
+npm run dev
+
+# Run in production mode
+npm start
+```
+
+---
+
+## API Endpoints
+
+### 🔐 Authentication Endpoints
+
+#### Register User
+```
+POST /api/auth/register
+```
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "password123",
+  "role": "customer"  // Optional: "admin" or "customer"
+}
+```
+
+**Response (201):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "_id": "507f1f77bcf86cd799439011",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "customer"
+  }
+}
+```
+
+#### Login
+```
+POST /api/auth/login
+```
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "password": "password123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "_id": "507f1f77bcf86cd799439011",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "customer"
+  }
+}
+```
+
+---
+
+### 📦 Product Endpoints
+
+#### Create Product (Admin Only)
+```
+POST /api/products
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 50000,
+  "stockId": "507f1f77bcf86cd799439011"
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "Product created successfully",
+  "product": {
+    "_id": "507f1f77bcf86cd799439012",
+    "name": "Laptop",
+    "description": "High-performance laptop",
+    "price": 50000,
+    "stockId": "507f1f77bcf86cd799439011",
+    "createdAt": "2024-01-15T10:30:00.000Z",
+    "updatedAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+#### Get All Products
+```
+GET /api/products
+Headers: Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+[
+  {
+    "_id": "507f1f77bcf86cd799439012",
+    "name": "Laptop",
+    "description": "High-performance laptop",
+    "price": 50000,
+    "stockId": {
+      "_id": "507f1f77bcf86cd799439011",
+      "productName": "Laptop",
+      "category": "Electronics",
+      "quantity": 50,
+      "supplierId": {
+        "_id": "507f1f77bcf86cd799439013",
+        "name": "Tech Supplier",
+        "company": "Tech Corp"
+      }
+    }
+  }
+]
+```
+
+#### Update Product (Admin Only)
+```
+PUT /api/products/:id
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "name": "Updated Laptop",
+  "price": 55000
+}
+```
+
+#### Delete Product (Admin Only)
+```
+DELETE /api/products/:id
+Headers: Authorization: Bearer <token>
+```
+
+---
+
+### 🏢 Supplier Endpoints
+
+#### Create Supplier (Admin Only)
+```
+POST /api/suppliers
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "name": "John Supplier",
+  "company": "Supplier Corp",
+  "email": "supplier@example.com",
+  "phone": "+1234567890",
+  "address": "123 Main St"
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "Supplier created successfully",
+  "supplier": {
+    "_id": "507f1f77bcf86cd799439013",
+    "name": "John Supplier",
+    "company": "Supplier Corp",
+    "email": "supplier@example.com",
+    "phone": "+1234567890",
+    "address": "123 Main St"
+  }
+}
+```
+
+#### Get All Suppliers (Admin Only)
+```
+GET /api/suppliers
+Headers: Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+[
+  {
+    "_id": "507f1f77bcf86cd799439013",
+    "name": "John Supplier",
+    "company": "Supplier Corp",
+    "email": "supplier@example.com",
+    "phone": "+1234567890",
+    "address": "123 Main St"
+  }
+]
+```
+
+#### Update Supplier (Admin Only)
+```
+PUT /api/suppliers/:id
+Headers: Authorization: Bearer <token>
+```
+
+#### Delete Supplier (Admin Only)
+```
+DELETE /api/suppliers/:id
+Headers: Authorization: Bearer <token>
+```
+
+---
+
+### 📊 Stock Endpoints
+
+#### Create Stock (Admin Only)
+```
+POST /api/stocks
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "productName": "Laptop",
+  "category": "Electronics",
+  "quantity": 50,
+  "supplierId": "507f1f77bcf86cd799439013"
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "Stock added successfully",
+  "stock": {
+    "_id": "507f1f77bcf86cd799439011",
+    "productName": "Laptop",
+    "category": "Electronics",
+    "quantity": 50,
+    "supplierId": "507f1f77bcf86cd799439013",
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+#### Get All Stock
+```
+GET /api/stocks
+Headers: Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "productName": "Laptop",
+    "category": "Electronics",
+    "quantity": 50,
+    "supplierId": {
+      "_id": "507f1f77bcf86cd799439013",
+      "name": "John Supplier",
+      "company": "Supplier Corp",
+      "email": "supplier@example.com",
+      "phone": "+1234567890"
+    }
+  }
+]
+```
+
+#### Update Stock (Admin Only)
+```
+PUT /api/stocks/:id
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "quantity": 75
+}
+```
+
+#### Delete Stock (Admin Only)
+```
+DELETE /api/stocks/:id
+Headers: Authorization: Bearer <token>
+```
+
+---
+
+### 🛒 Order Endpoints
+
+#### Create Order (Customer)
+```
+POST /api/orders
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "items": [
+    {
+      "productId": "507f1f77bcf86cd799439012",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+**Response (201):**
+```json
+{
+  "message": "Order placed successfully ✅",
+  "newOrder": {
+    "_id": "507f1f77bcf86cd799439014",
+    "userId": "507f1f77bcf86cd799439010",
+    "items": [
+      {
+        "productId": "507f1f77bcf86cd799439012",
+        "stockId": "507f1f77bcf86cd799439011",
+        "productName": "Laptop",
+        "quantity": 2,
+        "price": 50000
+      }
+    ],
+    "totalAmount": 100000,
+    "status": "pending",
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+**Flow:**
+1. Validates items array
+2. Checks product existence
+3. Verifies stock availability
+4. Calculates total amount
+5. Deducts stock quantities
+6. Creates order
+
+#### Get All Orders (Admin Only)
+```
+GET /api/orders
+Headers: Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+[
+  {
+    "_id": "507f1f77bcf86cd799439014",
+    "userId": {
+      "_id": "507f1f77bcf86cd799439010",
+      "name": "John Doe",
+      "email": "john@example.com"
+    },
+    "items": [
+      {
+        "productId": "507f1f77bcf86cd799439012",
+        "productName": "Laptop",
+        "quantity": 2,
+        "price": 50000
+      }
+    ],
+    "totalAmount": 100000,
+    "status": "pending",
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+]
+```
+
+**Note:** Orders are sorted by newest first (`createdAt: -1`)
+
+#### Get My Orders (Customer)
+```
+GET /api/orders/my-orders
+Headers: Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+[
+  {
+    "_id": "507f1f77bcf86cd799439014",
+    "items": [
+      {
+        "productName": "Laptop",
+        "quantity": 2,
+        "price": 50000
+      }
+    ],
+    "totalAmount": 100000,
+    "status": "pending",
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+]
+```
+
+#### Update Order Status (Admin Only)
+```
+PUT /api/orders/:id/status
+Headers: Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "status": "shipped"
+}
+```
+
+**Valid Status Values:**
+- `pending` (default)
+- `shipped`
+- `delivered`
+
+**Response (200):**
+```json
+{
+  "message": "Order status updated ✅",
+  "order": {
+    "_id": "507f1f77bcf86cd799439014",
+    "status": "shipped",
+    ...
+  }
+}
+```
+
+#### Delete Order (Admin Only)
+```
+DELETE /api/orders/:id
+Headers: Authorization: Bearer <token>
+```
+
+**Response (200):**
+```json
+{
+  "message": "Order deleted successfully ✅"
+}
+```
+
+**Important:** When an order is deleted, stock quantities are automatically restored.
 
 ---
 
 ## Backend Flow
 
-### High-level Request Lifecycle
-1. Client calls an endpoint under `/api/...`.
-2. Express middleware stack runs:
-   - `cors` and `express.json()` parse/permit request
-   - `protect` (if applied) reads `Authorization` header, verifies JWT via `JWT_SECRET`, attaches `req.user`
-   - `authorizeRoles("admin")` (if applied) checks `req.user.role`
-3. Route handler delegates to a controller in `src/controllers/*Controller.js`.
-4. Controllers use Mongoose models in `src/models/*.js` to query/update MongoDB.
-5. Response JSON is sent back. Errors are returned with appropriate HTTP codes.
+### Request Lifecycle
 
-### Relevant Modules
-- `src/app.js`: wires up middleware and mounts route modules at `/api/*`.
-- `src/middlewares/authMiddleware.js`: `protect` and `authorizeRoles` for auth/role checks.
-- `src/utils/generateToken.js`: issues JWTs on login/registration.
-- `src/config/db.js`: connects to MongoDB using `MONGO_URI`.
-- `src/controllers/*`: request handlers per domain (auth, products, suppliers, stock, orders).
-- `src/models/*`: Mongoose schemas for `User`, `Product`, `Supplier`, `Stock`, `Order`.
+```
+┌─────────────┐
+│   Client    │
+│  (Frontend) │
+└──────┬──────┘
+       │
+       │ HTTP Request
+       │ (with JWT token)
+       ▼
+┌─────────────────────────────────────┐
+│         Express App (app.js)         │
+│  ┌───────────────────────────────┐  │
+│  │  Middleware Stack:            │  │
+│  │  1. CORS                      │  │
+│  │  2. express.json()            │  │
+│  │  3. protect (JWT verify)     │  │
+│  │  4. authorizeRoles (if admin) │  │
+│  └───────────────────────────────┘  │
+└──────┬──────────────────────────────┘
+       │
+       │ Route Match
+       ▼
+┌─────────────────────────────────────┐
+│      Route Handler                  │
+│  (routes/*Routes.js)                │
+└──────┬──────────────────────────────┘
+       │
+       │ Controller Call
+       ▼
+┌─────────────────────────────────────┐
+│      Controller                     │
+│  (controllers/*Controller.js)       │
+│  ┌───────────────────────────────┐  │
+│  │  Business Logic:              │  │
+│  │  - Validate data               │  │
+│  │  - Database operations         │  │
+│  │  - Calculate totals            │  │
+│  │  - Error handling              │  │
+│  └───────────────────────────────┘  │
+└──────┬──────────────────────────────┘
+       │
+       │ Mongoose Query
+       ▼
+┌─────────────────────────────────────┐
+│         MongoDB Database           │
+│  ┌───────────────────────────────┐  │
+│  │  Collections:                  │  │
+│  │  - users                       │  │
+│  │  - products                    │  │
+│  │  - suppliers                   │  │
+│  │  - stocks                      │  │
+│  │  - orders                      │  │
+│  └───────────────────────────────┘  │
+└──────┬──────────────────────────────┘
+       │
+       │ Response
+       ▼
+┌─────────────┐
+│   Client    │
+│  (Frontend) │
+└─────────────┘
+```
 
-### Example Auth Flow
-1. `POST /api/auth/login` with `{ email, password }`.
-2. Controller validates user, generates JWT using `generateToken`.
-3. Client stores token and sends `Authorization: Bearer <token>` on subsequent requests.
-4. Protected routes validate token in `protect`, attach `req.user`, and proceed.
+### Authentication Flow
+
+```
+1. User Registration/Login
+   POST /api/auth/register or /api/auth/login
+   │
+   ├─► Controller validates credentials
+   │
+   ├─► generateToken() creates JWT
+   │
+   └─► Returns token + user data
+   
+2. Protected Request
+   GET /api/products
+   Headers: Authorization: Bearer <token>
+   │
+   ├─► protect middleware extracts token
+   │
+   ├─► Verifies JWT signature
+   │
+   ├─► Attaches user to req.user
+   │
+   └─► Controller processes request
+```
+
+### Order Creation Flow
+
+```
+1. Customer Places Order
+   POST /api/orders
+   Body: { items: [{ productId, quantity }] }
+   │
+   ├─► Validate items array
+   │
+   ├─► For each item:
+   │   ├─► Find product by ID
+   │   ├─► Check stock availability
+   │   ├─► Calculate item total
+   │   └─► Prepare order item
+   │
+   ├─► Calculate totalAmount
+   │
+   ├─► Deduct stock quantities
+   │   └─► Stock.findByIdAndUpdate(quantity: -item.quantity)
+   │
+   ├─► Create order in database
+   │
+   └─► Return order with success message
+```
+
+### Order Deletion Flow
+
+```
+1. Admin Deletes Order
+   DELETE /api/orders/:id
+   │
+   ├─► Find order by ID
+   │
+   ├─► For each item in order:
+   │   └─► Restore stock quantity
+   │       └─► Stock.findByIdAndUpdate(quantity: +item.quantity)
+   │
+   ├─► Delete order from database
+   │
+   └─► Return success message
+```
 
 ---
 
-## Quick Start
-1. Set environment variables (`.env`):
-   - `MONGO_URI=<your-mongodb-uri>`
-   - `JWT_SECRET=<secure-random-string>`
-   - `PORT=5000`
-2. Install and run:
-   - `npm install`
-   - `npm start` or `node src/server.js`
+## Error Handling
+
+### Common HTTP Status Codes
+
+- **200 OK**: Request successful
+- **201 Created**: Resource created successfully
+- **400 Bad Request**: Invalid request data
+- **401 Unauthorized**: Missing or invalid token
+- **403 Forbidden**: Insufficient permissions (not admin)
+- **404 Not Found**: Resource not found
+- **500 Internal Server Error**: Server error
+
+### Error Response Format
+
+```json
+{
+  "message": "Error description here"
+}
+```
+
+### Example Error Responses
+
+**401 Unauthorized:**
+```json
+{
+  "message": "Not authorized, token failed"
+}
+```
+
+**403 Forbidden:**
+```json
+{
+  "message": "Not authorized as an admin"
+}
+```
+
+**404 Not Found:**
+```json
+{
+  "message": "Product not found"
+}
+```
+
+**400 Bad Request (Order Creation):**
+```json
+{
+  "message": "Not enough stock for Laptop"
+}
+```
+
+---
+
+## Data Models
+
+### User Model
+```javascript
+{
+  _id: ObjectId,
+  name: String (required),
+  email: String (required, unique),
+  password: String (required, hashed),
+  role: String (enum: ["admin", "customer"], default: "customer"),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Product Model
+```javascript
+{
+  _id: ObjectId,
+  name: String (required),
+  description: String,
+  price: Number (required),
+  stockId: ObjectId (ref: "Stock", required),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Supplier Model
+```javascript
+{
+  _id: ObjectId,
+  name: String (required),
+  company: String (required),
+  email: String,
+  phone: String,
+  address: String,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Stock Model
+```javascript
+{
+  _id: ObjectId,
+  productName: String (required),
+  category: String (required),
+  quantity: Number (required, min: 0),
+  supplierId: ObjectId (ref: "Supplier", required),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Order Model
+```javascript
+{
+  _id: ObjectId,
+  userId: ObjectId (ref: "User", required),
+  items: [{
+    productId: ObjectId (ref: "Product", required),
+    stockId: ObjectId (ref: "Stock", required),
+    productName: String (required),
+    quantity: Number (required, min: 1),
+    price: Number (required)
+  }],
+  totalAmount: Number (required),
+  status: String (enum: ["pending", "shipped", "delivered"], default: "pending"),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+---
+
+## Quick Reference
+
+### Endpoint Summary
+
+| Method | Endpoint | Auth | Role | Description |
+|--------|----------|------|------|-------------|
+| POST | `/api/auth/register` | ❌ | - | Register new user |
+| POST | `/api/auth/login` | ❌ | - | Login user |
+| POST | `/api/products` | ✅ | Admin | Create product |
+| GET | `/api/products` | ✅ | All | Get all products |
+| PUT | `/api/products/:id` | ✅ | Admin | Update product |
+| DELETE | `/api/products/:id` | ✅ | Admin | Delete product |
+| POST | `/api/suppliers` | ✅ | Admin | Create supplier |
+| GET | `/api/suppliers` | ✅ | Admin | Get all suppliers |
+| PUT | `/api/suppliers/:id` | ✅ | Admin | Update supplier |
+| DELETE | `/api/suppliers/:id` | ✅ | Admin | Delete supplier |
+| POST | `/api/stocks` | ✅ | Admin | Create stock |
+| GET | `/api/stocks` | ✅ | All | Get all stock |
+| PUT | `/api/stocks/:id` | ✅ | Admin | Update stock |
+| DELETE | `/api/stocks/:id` | ✅ | Admin | Delete stock |
+| POST | `/api/orders` | ✅ | Customer | Create order |
+| GET | `/api/orders` | ✅ | Admin | Get all orders |
+| GET | `/api/orders/my-orders` | ✅ | Customer | Get my orders |
+| PUT | `/api/orders/:id/status` | ✅ | Admin | Update order status |
+| DELETE | `/api/orders/:id` | ✅ | Admin | Delete order |
+
+---
 
 ## Notes
-- CORS is configured as open (`origin: *`). Adjust for production.
-- All protected routes require the Bearer token. Admin-only routes also require `user.role === "admin"`.
 
+- **CORS**: Currently configured to allow all origins (`origin: *`). Adjust for production.
+- **Token Expiration**: JWT tokens don't expire by default. Consider adding expiration for production.
+- **Stock Management**: Stock quantities are automatically updated when orders are created/deleted.
+- **Order Status**: Orders default to "pending" and can be updated to "shipped" or "delivered".
+- **Data Population**: Many endpoints use Mongoose `.populate()` to include related data (e.g., supplier info in stock, user info in orders).
 
+---
+
+## Support
+
+For issues or questions, check the codebase:
+- Routes: `src/routes/*.js`
+- Controllers: `src/controllers/*.js`
+- Models: `src/models/*.js`
+- Middleware: `src/middlewares/authMiddleware.js`
