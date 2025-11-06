@@ -5,6 +5,7 @@ const {
   getAllOrders,
   getMyOrders,
   updateOrderStatus,
+  deleteOrder,
 } = require("../controllers/orderController");
 const { protect, authorizeRoles } = require("../middlewares/authMiddleware");
 
@@ -19,5 +20,8 @@ router.get("/my-orders", protect, getMyOrders);
 
 // Admin: Update order status
 router.put("/:id/status", protect, authorizeRoles("admin"), updateOrderStatus);
+
+// Admin: Delete order
+router.delete("/:id", protect, authorizeRoles("admin"), deleteOrder);
 
 module.exports = router;

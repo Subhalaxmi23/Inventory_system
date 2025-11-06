@@ -78,7 +78,8 @@ const getAllOrders = async (req, res) => {
     const orders = await Order.find()
       .populate("userId", "name email")
       .populate("items.productId", "name price")
-      .populate("items.stockId", "name quantity location"); // Add stock details
+      .populate("items.stockId", "name quantity location")
+      .sort({ createdAt: -1 }); // Sort by newest first
 
     res.status(200).json(orders);
   } catch (error) {
@@ -119,9 +120,42 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+// 🗑️ Admin: Delete Order (and restore stock)
+const deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log("🗑️ Delete order request for ID:", id);
+
+    const order = await Order.findById(id);
+    if (!order) {
+      console.log("❌ Order not found:", id);
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Restore stock quantities for each item in the order
+    for (const item of order.items) {
+      if (item.stockId) {
+        await Stock.findByIdAndUpdate(item.stockId, {
+          $inc: { quantity: item.quantity },
+        });
+      }
+    }
+
+    // Delete the order
+    await Order.findByIdAndDelete(id);
+
+    console.log("✅ Order deleted successfully:", id);
+    res.status(200).json({ message: "Order deleted successfully ✅" });
+  } catch (error) {
+    console.error("❌ Order deletion error:", error.message);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   getAllOrders,
   getMyOrders,
   updateOrderStatus,
+  deleteOrder,
 };
